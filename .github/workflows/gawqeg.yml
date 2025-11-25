@@ -1,0 +1,86 @@
+name: Continuous Integration
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  push:
+    branches: [ main ]
+  pull_request:
+    branches:
+  workflow_dispatch:
+    branches:
+
+jobs:
+  test:
+    env:
+      PYTHONIOENCODING: "utf-8"
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        os: [ubuntu-latest]
+        python-version: ["3.13"]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Configure Python ${ { matrix.python-version } }
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Set system locale
+      run: |
+        sudo apt-get install -y tzdata locales
+        sudo locale-gen en_US.UTF-8
+        sudo localectl set-locale LANG="en_US.UTF-8"
+        export LANG="en_US.UTF-8"
+        sudo update-locale
+        locale -a
+        locale
+        localectl status
+
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install --upgrade wheel seleniumbase pyautogui pymongo python-xlib
+
+    - name: Install Google Chrome
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt install -y google-chrome-stable
+
+    - name: Verify seleniumbase commands
+      run: |
+        seleniumbase
+        sbase
+
+    - name: Download ChromeDriver
+      run: |
+        seleniumbase install chromedriver
+
+    - name: Install Cloudflare WARP client
+      run: |
+        sudo apt update
+        sudo apt install -y curl
+        curl https://pkg.cloudflareclient.com/pubkey.gpg | sudo gpg --dearmor -o /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
+        echo "deb [signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/cloudflare-client.list
+        sudo apt update
+        sudo apt install -y cloudflare-warp
+        sudo warp-cli --accept-tos registration new
+        sudo warp-cli --accept-tos connect
+        sleep 5
+        sudo warp-cli --accept-tos status
+
+    - name: Execute tests with debug mode
+      run: |
+        python rila.py --debug --chrome --xvfb --screenshot
+
+    - name: Upload screenshot artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: screenshot-logs
+        path: ./latest_logs/
